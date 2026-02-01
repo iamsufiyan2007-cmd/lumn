@@ -22,7 +22,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 st.title("lumn study smart")
-genai.configure(api_key=st.secrets("GOOGLE_API_KEY_1"))
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY_1"])
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 if not os.path.exists("user.json"):
@@ -272,7 +272,7 @@ if st.session_state.step == 4:
     
 if st.session_state.step==5:
     # Configure API (use secrets in real projects)
-    genai.configure(api_key=st.secrets("GOOGLE_API_KEY_2"))
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY_2"])
 
     model = genai.GenerativeModel("gemini-2.5-flash")
 
