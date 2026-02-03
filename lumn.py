@@ -21,14 +21,19 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
-st.title("lumn study smart")
+st.title("IUMN STUDY SMART")
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY_1"])
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 if not os.path.exists("user.json"):
     with open("user.json", "w") as f:
         json.dump({"user": {}}, f, indent=4)
-    
+if not os.path.exists("quiz.json"):
+    with open("quiz.json", "w") as f:
+        json.dump({"quiz": []}, f, indent=4)
+if not os.path.exists("user.json"):
+    with open("user.json", "w") as f:
+        json.dump({"user": {}}, f, indent=4)
 def load():
     with open("user.json","r") as f:
         return json.load(f)
@@ -53,6 +58,8 @@ if "quiz" not in st.session_state:
     st.session_state.quiz=0
 if "answers" not in st.session_state:
     st.session_state.answers={}
+if "quiz_data" not in st.session_state:
+    st.session_state.quiz_data=[]
 def logged_in():
     st.session_state.step=0
 def sign_in():
@@ -67,7 +74,7 @@ def chat():
     st.session_state.step=5
 
 if st.session_state.step==0:
-    st.title("Login")
+    st.title("LOGIN")
 
     user=load()
     username=st.text_input("name")
@@ -88,7 +95,7 @@ if st.session_state.step==0:
             sign_in()
             st.rerun()
 if st.session_state.step==1:
-    st.title("signin")
+    st.title("SIGNIN")
     data=load()
     new_user=st.text_input("name",key="new_name")
     new_age=st.number_input("age",min_value=4,step=1,key="new age")
@@ -115,7 +122,7 @@ if st.session_state.step==1:
            test()
            st.rerun()
 if st.session_state.step==2:
-    st.title("profile")
+    st.title("PROFILE")
     reg_info=load()
     get_user=st.session_state.u_name
     if get_user in reg_info["user"]:
@@ -129,13 +136,15 @@ if st.session_state.step==2:
         st.rerun()
 if st.session_state.step == 3:
 
-    st.title("test quiz")
+    st.title("TEST QUIZ")
 
 
     user = st.session_state.u_name
     data = load()
     topic = data["user"][user]["sylabus"]
     level=data["user"][user]["study"]
+    if "lev" not in st.session_state:
+        st.session_state.lev=level
 
     if st.button("Generate quiz questions"):
         prompt = f"""You are an expert in generating quiz questions.
@@ -165,9 +174,7 @@ if st.session_state.step == 3:
         quiz_data = json.loads(response.text)
        
 
-        if not os.path.exists("quiz.json"):
-            with open("quiz.json", "w") as f:
-                json.dump({"quiz": []}, f, indent=4)
+        
 
         with open("quiz.json", "r") as f:
             saved = json.load(f)
@@ -232,27 +239,54 @@ if st.session_state.step == 3:
         
 
 if st.session_state.step == 4:
-
+    if "memory" not in st.session_state:
+        st.session_state.memory={}
+    current_user=st.session_state.u_name
+    combaind={}
     # Use the current quiz
     quiz_data = load_quiz()
+    user_attempts = [r for r in quiz_data.get("results", []) if r["user"] == current_user]
 
-    user_result =quiz_data["results"][0]["scores"]
-
+    for attampt in user_attempts:
+        for subject,score in attampt["scores"].items():
+            if subject not in combaind:
+                combaind[subject]={"correct":0,"total":0}
+            combaind[subject]["correct"]+=score["correct"]
+            combaind[subject]["total"]+=score["total"]
     subject_accuracy = {
         subject: round((v["correct"] / v["total"]) * 100, 2)
-        for subject, v in user_result.items()
+        for subject, v in combaind.items()
     }
 
-    st.title("Your Results")
+    st.title("YOUR RESULT")
     st.subheader("Subject-wise Accuracy (%)")
 
     df = pd.DataFrame(
         list(subject_accuracy.items()),
         columns=["Subject", "Accuracy"]
     ).set_index("Subject")
-
+   
     st.bar_chart(df)
+    lowest_sub=None
+    lowest_per=100
+    t1,t2=st.columns(2)
 
+    with t1:
+       st.markdown("## GROSS SCORE")
+       for subject, score in combaind.items():
+           st.markdown(f"**{subject}** : {score['correct']} / {score['total']}")
+           
+    with t2:
+        st.markdown("## WEAKEST SUBJECT")
+        for subject, score in combaind.items():
+            persent=(score["correct"] / score["total"]) * 100
+
+            if persent<lowest_per:
+                lowest_sub=subject
+                lowest_per=persent
+        st.markdown(f"**LOWEST PERFORMENCE:** {lowest_sub}")
+        st.markdown(f"**LOWEST PERSANTAGE:** {lowest_per}")
+    st.session_state.memory=combaind
     c1, c2, c3 = st.columns(3)
 
     with c1:
@@ -269,14 +303,17 @@ if st.session_state.step == 4:
         if st.button("quiz"):
             test()
 
+
     
 if st.session_state.step==5:
+    lev=st.session_state.lev
+    cont=st.session_state.memory
     # Configure API (use secrets in real projects)
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY_2"])
 
     model = genai.GenerativeModel("gemini-2.5-flash")
 
-    st.title("💡 Talk to Lumn")
+    st.title("💡 TALK TO LUMN")
 
     # Chat history
     if "messages" not in st.session_state:
@@ -288,10 +325,14 @@ if st.session_state.step==5:
             st.markdown(msg["content"])
 
     # System instruction (hidden from user)
-    SYSTEM_PROMPT = """
+    SYSTEM_PROMPT = f"""
     You are Lumn, a great teacher.
     Explain any topic clearly, step by step,
-    using simple words and examples.
+    using simple words and examples and you need to give a revison plan for the user
+    based on the given data of users scores and subject and you have to identify the users
+    weakness. this is users scores and subject {cont}.
+    if user ask anything besides studying like medical advice or anything politly refuse.
+    this is the level of the user{lev} if lev is non ask the user for their level
     """
 
     # User input
