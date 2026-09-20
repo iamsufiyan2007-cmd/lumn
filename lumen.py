@@ -24,7 +24,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Lumn Study Smart", page_icon="🦉", layout="wide", initial_sidebar_state="expanded")
 
-DB, MODEL, DAILY_GOAL = os.environ.get("STUDYSMART_DB", "studysmart.db"), "gemini-2.5-flash", 5
+DB, MODEL, DAILY_GOAL = os.environ.get("STUDYSMART_DB", "studysmart.db"), "gemini-3-flash-preview", 5
 GREY = "#5b6f79"
 GREEN, BLUE, RED, ORANGE, PURPLE = "#58cc02", "#1cb0f6", "#ff4b4b", "#ff9600", "#ce82ff"
 
@@ -307,16 +307,22 @@ def ai(prompt, json_mode=False, key="GOOGLE_API_KEY_1"):
     body = {"contents": [{"parts": [{"text": prompt}]}]}
     if json_mode:
         body["generationConfig"] = {"responseMimeType": "application/json"}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
-    for attempt in range(2):
-        r = _http().post(url, json=body, headers={"x-goog-api-key": api_key}, timeout=45)
-        if r.status_code in (429, 500, 503) and attempt == 0:
-            time.sleep(1.5)
-            continue
-        break
+    # Preferred model first (override with a GEMINI_MODEL secret); fall back if Google says it does not exist.
+    for model in dict.fromkeys([str(secret("GEMINI_MODEL", MODEL)).strip(), "gemini-2.5-flash"]):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in range(2):
+            r = _http().post(url, json=body, headers={"x-goog-api-key": api_key}, timeout=45)
+            if r.status_code in (429, 500, 503) and attempt == 0:
+                time.sleep(1.5)
+                continue
+            break
+        if r.status_code != 404:
+            break
     if not r.ok:
         try:
-            msg = r.json()["error"]["message"]
+            err = r.json()["error"]
+            reason = next((d["reason"] for d in err.get("details", []) if isinstance(d, dict) and d.get("reason")), "")
+            msg = err["message"] + (f" [{reason}]" if reason else "")
         except Exception:
             msg = r.text[:200]
         raise RuntimeError(f"Gemini API {r.status_code}: {msg}")
